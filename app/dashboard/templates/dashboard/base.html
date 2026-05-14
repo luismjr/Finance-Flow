@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Finance Flow{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+  <style>
+    :root {
+      --ff-bg: #0a0e1a;
+      --ff-surface: #111827;
+      --ff-surface2: #1a2235;
+      --ff-border: #1e2d45;
+      --ff-accent: #3b82f6;
+      --ff-accent2: #6366f1;
+      --ff-green: #10b981;
+      --ff-red: #ef4444;
+      --ff-yellow: #f59e0b;
+      --ff-text: #e2e8f0;
+      --ff-muted: #64748b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      background: var(--ff-bg);
+      color: var(--ff-text);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      position: fixed;
+      top: 0; left: 0;
+      width: 220px;
+      height: 100vh;
+      background: var(--ff-surface);
+      border-right: 1px solid var(--ff-border);
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+      padding: 0;
+    }
+
+    .sidebar-logo {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--ff-border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-logo .logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--ff-accent), var(--ff-accent2));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    .sidebar-logo .logo-text {
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: -0.02em;
+      color: var(--ff-text);
+    }
+
+    .sidebar-logo .logo-sub {
+      font-size: 10px;
+      color: var(--ff-muted);
+      font-weight: 400;
+    }
+
+    .sidebar-nav {
+      padding: 16px 12px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .sidebar-nav .nav-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ff-muted);
+      padding: 8px 8px 4px;
+      margin-top: 8px;
+    }
+
+    .sidebar-nav a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      color: var(--ff-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+
+    .sidebar-nav a:hover {
+      background: var(--ff-surface2);
+      color: var(--ff-text);
+    }
+
+    .sidebar-nav a.active {
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--ff-accent);
+    }
+
+    .sidebar-nav a i {
+      font-size: 16px;
+      width: 20px;
+      text-align: center;
+    }
+
+    .sidebar-footer {
+      padding: 16px;
+      border-top: 1px solid var(--ff-border);
+      font-size: 11px;
+      color: var(--ff-muted);
+    }
+
+    .sidebar-footer .tech-badge {
+      display: inline-block;
+      background: var(--ff-surface2);
+      border: 1px solid var(--ff-border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 10px;
+      margin: 2px 2px 0 0;
+      color: var(--ff-muted);
+    }
+
+    /* Main content */
+    .main-content {
+      margin-left: 220px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      background: var(--ff-surface);
+      border-bottom: 1px solid var(--ff-border);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .topbar-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--ff-text);
+    }
+
+    .topbar-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--ff-green);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--ff-green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .page-body {
+      padding: 28px;
+      flex: 1;
+    }
+
+    /* Cards */
+    .ff-card {
+      background: var(--ff-surface);
+      border: 1px solid var(--ff-border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .ff-card .card-header {
+      background: transparent;
+      border-bottom: 1px solid var(--ff-border);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .ff-card .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ff-text);
+      margin: 0;
+    }
+
+    .ff-card .card-body {
+      padding: 20px;
+    }
+
+    /* KPI tiles */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi-tile {
+      background: var(--ff-surface);
+      border: 1px solid var(--ff-border);
+      border-radius: 12px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-tile::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--ff-accent), var(--ff-accent2));
+    }
+
+    .kpi-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ff-muted);
+      margin-bottom: 8px;
+    }
+
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--ff-text);
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+
+    .kpi-sub {
+      font-size: 12px;
+      color: var(--ff-muted);
+      margin-top: 6px;
+    }
+
+    .kpi-icon {
+      position: absolute;
+      top: 20px; right: 20px;
+      font-size: 22px;
+      opacity: 0.3;
+    }
+
+    /* Tables */
+    .ff-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 13px;
+    }
+
+    .ff-table th {
+      background: var(--ff-surface2);
+      padding: 10px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--ff-muted);
+      border-bottom: 1px solid var(--ff-border);
+      white-space: nowrap;
+    }
+
+    .ff-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--ff-border);
+      color: var(--ff-text);
+      vertical-align: middle;
+    }
+
+    .ff-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .ff-table tr:hover td {
+      background: var(--ff-surface2);
+    }
+
+    /* Badges */
+    .badge-success { background: rgba(16,185,129,.15); color: #10b981; border: 1px solid rgba(16,185,129,.3); }
+    .badge-failed  { background: rgba(239,68,68,.15);  color: #ef4444; border: 1px solid rgba(239,68,68,.3);  }
+    .badge-running { background: rgba(245,158,11,.15); color: #f59e0b; border: 1px solid rgba(245,158,11,.3); }
+    .badge-pass    { background: rgba(16,185,129,.15); color: #10b981; border: 1px solid rgba(16,185,129,.3); }
+    .badge-fail    { background: rgba(239,68,68,.15);  color: #ef4444; border: 1px solid rgba(239,68,68,.3);  }
+    .badge-warn    { background: rgba(245,158,11,.15); color: #f59e0b; border: 1px solid rgba(245,158,11,.3); }
+
+    .ff-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* Positive/negative returns */
+    .text-gain { color: var(--ff-green) !important; }
+    .text-loss { color: var(--ff-red) !important; }
+
+    /* Charts */
+    .chart-container {
+      position: relative;
+      width: 100%;
+    }
+
+    /* Progress bar */
+    .ff-progress {
+      height: 6px;
+      border-radius: 3px;
+      background: var(--ff-surface2);
+      overflow: hidden;
+    }
+
+    .ff-progress-bar {
+      height: 100%;
+      border-radius: 3px;
+      background: linear-gradient(90deg, var(--ff-accent), var(--ff-accent2));
+      transition: width 0.6s ease;
+    }
+
+    /* Scrollable table wrapper */
+    .table-scroll {
+      overflow-x: auto;
+      overflow-y: auto;
+      max-height: 420px;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); }
+      .main-content { margin-left: 0; }
+    }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">📈</div>
+    <div>
+      <div class="logo-text">Finance Flow</div>
+      <div class="logo-sub">ELT Data Pipeline</div>
+    </div>
+  </div>
+
+  <div class="sidebar-nav">
+    <div class="nav-label">Overview</div>
+    <a href="{% url 'index' %}" class="{% if page == 'dashboard' %}active{% endif %}">
+      <i class="bi bi-grid-1x2"></i> Dashboard
+    </a>
+
+    <div class="nav-label">Data</div>
+    <a href="{% url 'stocks' %}" class="{% if page == 'stocks' %}active{% endif %}">
+      <i class="bi bi-graph-up-arrow"></i> Stocks
+    </a>
+
+    <div class="nav-label">Operations</div>
+    <a href="{% url 'pipeline' %}" class="{% if page == 'pipeline' %}active{% endif %}">
+      <i class="bi bi-diagram-3"></i> Pipeline
+    </a>
+    <a href="{% url 'quality' %}" class="{% if page == 'quality' %}active{% endif %}">
+      <i class="bi bi-shield-check"></i> Data Quality
+    </a>
+  </div>
+
+  <div class="sidebar-footer">
+    <div style="margin-bottom:6px;font-weight:600;color:var(--ff-text);">Tech Stack</div>
+    <span class="tech-badge">Python</span>
+    <span class="tech-badge">Django</span>
+    <span class="tech-badge">Airflow</span>
+    <span class="tech-badge">dbt</span>
+    <span class="tech-badge">PostgreSQL</span>
+    <span class="tech-badge">GCS</span>
+  </div>
+</nav>
+
+<div class="main-content">
+  <div class="topbar">
+    <div class="topbar-title">{% block topbar_title %}Finance Flow{% endblock %}</div>
+    <div class="topbar-meta">
+      <span style="font-size:12px;color:var(--ff-muted);" id="clock"></span>
+      <div class="status-pill">
+        <span class="status-dot"></span>
+        Pipeline Active
+      </div>
+    </div>
+  </div>
+
+  <div class="page-body">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  // Live clock
+  function updateClock() {
+    const el = document.getElementById('clock');
+    if (el) {
+      const now = new Date();
+      el.textContent = now.toLocaleString('en-US', {
+        timeZone: 'America/New_York',
+        month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+        timeZoneName: 'short'
+      });
+    }
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // Chart defaults
+  Chart.defaults.color = '#64748b';
+  Chart.defaults.borderColor = '#1e2d45';
+  Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+  Chart.defaults.font.size = 11;
+</script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

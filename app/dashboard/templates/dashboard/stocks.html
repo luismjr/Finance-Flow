@@ -1,0 +1,277 @@
+{% extends "dashboard/base.html" %}
+{% load humanize %}
+{% block title %}Stocks — Finance Flow{% endblock %}
+{% block topbar_title %}Stock Explorer{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+  <!-- Ticker selector -->
+  <div class="col-lg-3">
+    <div class="ff-card h-100">
+      <div class="card-header">
+        <h6 class="card-title"><i class="bi bi-search me-2"></i>Select Stock</h6>
+      </div>
+      <div class="card-body" style="padding:12px">
+        <input type="text" id="tickerSearch" placeholder="Search ticker or name..."
+          style="width:100%;background:var(--ff-surface2);border:1px solid var(--ff-border);color:var(--ff-text);
+          padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:10px;outline:none" />
+        <div class="table-scroll" style="max-height:520px">
+          {% for t, name, sector in tickers %}
+          <a href="?ticker={{ t }}&period={{ period }}"
+            style="display:block;padding:8px 10px;border-radius:6px;text-decoration:none;margin-bottom:2px;
+            {% if t == selected_ticker %}background:rgba(59,130,246,.15);color:var(--ff-accent);{% else %}color:var(--ff-text){% endif %}"
+            class="ticker-row" data-ticker="{{ t }}" data-name="{{ name }}">
+            <div style="font-weight:600;font-size:13px">{{ t }}</div>
+            <div style="font-size:11px;color:var(--ff-muted)">{{ name|truncatechars:28 }}</div>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chart area -->
+  <div class="col-lg-9">
+    <!-- Stock header -->
+    <div class="ff-card mb-3">
+      <div class="card-body" style="padding:16px 20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="display:flex;align-items:baseline;gap:10px">
+              <h3 style="margin:0;font-size:26px;font-weight:700">{{ selected_ticker }}</h3>
+              {% if company %}
+              <span style="font-size:13px;color:var(--ff-muted)">{{ company.name }}</span>
+              {% endif %}
+            </div>
+            {% if company %}
+            <div style="margin-top:4px">
+              <span style="font-size:11px;background:var(--ff-surface2);border:1px solid var(--ff-border);
+                border-radius:4px;padding:2px 8px;color:var(--ff-muted)">{{ company.sector }}</span>
+              <span style="font-size:11px;background:var(--ff-surface2);border:1px solid var(--ff-border);
+                border-radius:4px;padding:2px 8px;color:var(--ff-muted);margin-left:4px">{{ company.industry }}</span>
+            </div>
+            {% endif %}
+          </div>
+
+          <div style="display:flex;gap:20px;align-items:center">
+            {% if latest %}
+            <div style="text-align:right">
+              <div style="font-size:28px;font-weight:700">${{ latest.close_price }}</div>
+              {% if price_change_pct is not None %}
+              <div style="font-size:14px;font-weight:600;
+                {% if price_change_pct > 0 %}color:var(--ff-green){% elif price_change_pct < 0 %}color:var(--ff-red){% else %}color:var(--ff-muted){% endif %}">
+                {% if price_change_pct > 0 %}▲{% elif price_change_pct < 0 %}▼{% endif %}
+                {% if price_change > 0 %}+{% endif %}${{ price_change|floatformat:2 }}
+                ({% if price_change_pct > 0 %}+{% endif %}{{ price_change_pct }}%)
+                <span style="color:var(--ff-muted);font-weight:400">{{ period }}d</span>
+              </div>
+              {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Period selector -->
+            <div style="display:flex;gap:4px">
+              {% for p in periods %}
+              <a href="?ticker={{ selected_ticker }}&period={{ p }}"
+                style="padding:5px 10px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;
+                {% if period == p %}background:var(--ff-accent);color:#fff{% else %}background:var(--ff-surface2);color:var(--ff-muted){% endif %}">
+                {{ p }}d
+              </a>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Price + MA chart -->
+    <div class="ff-card mb-3">
+      <div class="card-header">
+        <h6 class="card-title"><i class="bi bi-graph-up me-2 text-success"></i>Price & Moving Averages</h6>
+        <div style="display:flex;gap:12px;font-size:11px">
+          <span style="color:#3b82f6">— Close</span>
+          <span style="color:#10b981">— MA 7d</span>
+          <span style="color:#f59e0b">— MA 30d</span>
+          <span style="color:#6366f1">— MA 90d</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="chart-container" style="height:280px">
+          <canvas id="priceChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Volatility + Volume row -->
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="ff-card">
+          <div class="card-header">
+            <h6 class="card-title"><i class="bi bi-lightning me-2 text-warning"></i>Annualized Volatility</h6>
+            <span style="font-size:11px;color:var(--ff-muted)">mart_volatility_metrics</span>
+          </div>
+          <div class="card-body">
+            <div class="chart-container" style="height:160px">
+              <canvas id="volChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="ff-card">
+          <div class="card-header">
+            <h6 class="card-title"><i class="bi bi-bar-chart me-2 text-info"></i>Volume</h6>
+            <span style="font-size:11px;color:var(--ff-muted)">raw ingestion layer</span>
+          </div>
+          <div class="card-body">
+            <div class="chart-container" style="height:160px">
+              <canvas id="volumeChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Stats cards -->
+<div class="row g-3">
+  {% if vol_data %}
+  <div class="col-6 col-md-3">
+    <div class="kpi-tile">
+      <div class="kpi-label">Annualized Vol</div>
+      <div class="kpi-value" style="font-size:22px">
+        {% if vol_data.annualized_vol %}{{ vol_data.annualized_vol|floatformat:1 }}%{% else %}—{% endif %}
+      </div>
+      <div class="kpi-sub">30-day rolling</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-tile">
+      <div class="kpi-label">Beta (vs SPY)</div>
+      <div class="kpi-value" style="font-size:22px">
+        {% if vol_data.beta %}{{ vol_data.beta|floatformat:2 }}{% else %}—{% endif %}
+      </div>
+      <div class="kpi-sub">90-day rolling</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="kpi-tile">
+      <div class="kpi-label">Sharpe Ratio</div>
+      <div class="kpi-value" style="font-size:22px;{% if vol_data.sharpe_30d and vol_data.sharpe_30d > 1 %}color:var(--ff-green){% endif %}">
+        {% if vol_data.sharpe_30d %}{{ vol_data.sharpe_30d|floatformat:2 }}{% else %}—{% endif %}
+      </div>
+      <div class="kpi-sub">Annualized, 30d</div>
+    </div>
+  </div>
+  {% endif %}
+  {% if latest %}
+  <div class="col-6 col-md-3">
+    <div class="kpi-tile">
+      <div class="kpi-label">MA Cross Signal</div>
+      <div class="kpi-value" style="font-size:16px;
+        {% if latest.ma_7d and latest.ma_30d %}
+          {% if latest.ma_7d > latest.ma_30d %}color:var(--ff-green){% else %}color:var(--ff-red){% endif %}
+        {% endif %}">
+        {% if latest.ma_7d and latest.ma_30d %}
+          {% if latest.ma_7d > latest.ma_30d %}▲ Bullish{% else %}▼ Bearish{% endif %}
+        {% else %}—{% endif %}
+      </div>
+      <div class="kpi-sub">MA7 vs MA30</div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ticker = "{{ selected_ticker }}";
+const period = "{{ period }}";
+
+// Ticker search
+document.getElementById('tickerSearch').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('.ticker-row').forEach(el => {
+    const match = el.dataset.ticker.toLowerCase().includes(q) || el.dataset.name.toLowerCase().includes(q);
+    el.style.display = match ? 'block' : 'none';
+  });
+});
+
+// Load price + MA chart
+fetch(`/api/stock-chart/?ticker=${ticker}&period=${period}`)
+  .then(r => r.json())
+  .then(data => {
+    new Chart(document.getElementById('priceChart'), {
+      type: 'line',
+      data: {
+        labels: data.labels,
+        datasets: [
+          { label: 'Close', data: data.close, borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1 },
+          { label: 'MA 7d', data: data.ma7, borderColor: '#10b981', borderWidth: 1.5, pointRadius: 0, tension: 0.3, borderDash: [4,2] },
+          { label: 'MA 30d', data: data.ma30, borderColor: '#f59e0b', borderWidth: 1.5, pointRadius: 0, tension: 0.3 },
+          { label: 'MA 90d', data: data.ma90, borderColor: '#6366f1', borderWidth: 1.5, pointRadius: 0, tension: 0.3, borderDash: [6,3] },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top', align: 'end', labels: { boxWidth: 16, padding: 16 } },
+          tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: $${ctx.raw?.toFixed(2)}` } }
+        },
+        scales: {
+          y: { grid: { color: '#1e2d45' }, ticks: { callback: v => '$' + v.toFixed(0) } },
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } }
+        }
+      }
+    });
+
+    // Volume chart
+    new Chart(document.getElementById('volumeChart'), {
+      type: 'bar',
+      data: {
+        labels: data.labels,
+        datasets: [{
+          label: 'Volume',
+          data: data.volume,
+          backgroundColor: 'rgba(99,102,241,0.5)',
+          borderColor: 'rgba(99,102,241,0.8)',
+          borderWidth: 0, borderRadius: 2,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { grid: { color: '#1e2d45' }, ticks: { callback: v => (v/1e6).toFixed(0) + 'M' } },
+          x: { display: false }
+        }
+      }
+    });
+  });
+
+// Volatility chart
+fetch(`/api/volatility-chart/?ticker=${ticker}&period=${period}`)
+  .then(r => r.json())
+  .then(data => {
+    new Chart(document.getElementById('volChart'), {
+      type: 'line',
+      data: {
+        labels: data.labels,
+        datasets: [
+          { label: 'Ann. Vol (%)', data: data.annualized_vol, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', fill: true, borderWidth: 2, pointRadius: 0, tension: 0.3 },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { grid: { color: '#1e2d45' }, ticks: { callback: v => v?.toFixed(1) + '%' } },
+          x: { display: false }
+        }
+      }
+    });
+  });
+</script>
+{% endblock %}

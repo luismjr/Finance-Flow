@@ -1,0 +1,42 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw ingested data from Airflow DAGs via GCS → BigQuery load"
+    schema: public
+    tables:
+      - name: pipeline_stockprice
+        description: "Daily OHLCV data for 50 S&P 500 stocks ingested from yfinance"
+        columns:
+          - name: ticker
+            description: "Stock ticker symbol (e.g. AAPL)"
+          - name: date
+            description: "Trading date"
+          - name: open_price
+            description: "Opening price"
+          - name: high_price
+            description: "Intraday high"
+          - name: low_price
+            description: "Intraday low"
+          - name: close_price
+            description: "Closing price"
+          - name: adj_close
+            description: "Adjusted closing price"
+          - name: volume
+            description: "Shares traded"
+          - name: ingested_at
+            description: "Timestamp when record was ingested"
+
+      - name: pipeline_macroindicator
+        description: "Monthly FRED macroeconomic series observations"
+        columns:
+          - name: series_id
+            description: "FRED series identifier (e.g. FEDFUNDS)"
+          - name: name
+            description: "Human-readable series name"
+          - name: date
+            description: "Observation date"
+          - name: value
+            description: "Observed value"
+          - name: ingested_at
+            description: "Timestamp when record was ingested"

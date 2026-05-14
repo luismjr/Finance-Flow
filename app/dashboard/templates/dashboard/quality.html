@@ -1,0 +1,207 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Data Quality — Finance Flow{% endblock %}
+{% block topbar_title %}Data Quality — dbt Tests{% endblock %}
+
+{% block content %}
+<!-- Summary KPIs -->
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+  <div class="kpi-tile">
+    <i class="bi bi-shield-check kpi-icon" style="color:var(--ff-green)"></i>
+    <div class="kpi-label">Tests Passing</div>
+    <div class="kpi-value" style="color:var(--ff-green)">{{ passed_tests }}</div>
+    <div class="kpi-sub">of {{ total_tests }} total</div>
+  </div>
+  <div class="kpi-tile">
+    <i class="bi bi-shield-x kpi-icon" style="color:var(--ff-red)"></i>
+    <div class="kpi-label">Tests Failing</div>
+    <div class="kpi-value" {% if failed_tests %}style="color:var(--ff-red)"{% endif %}>{{ failed_tests }}</div>
+    <div class="kpi-sub">blocking downstream</div>
+  </div>
+  <div class="kpi-tile">
+    <i class="bi bi-percent kpi-icon"></i>
+    <div class="kpi-label">Pass Rate</div>
+    <div class="kpi-value" style="{% if pass_rate >= 99 %}color:var(--ff-green){% elif pass_rate >= 90 %}color:var(--ff-yellow){% else %}color:var(--ff-red){% endif %}">
+      {{ pass_rate }}%
+    </div>
+    <div class="kpi-sub">quality gate threshold: 100%</div>
+  </div>
+  <div class="kpi-tile">
+    <i class="bi bi-layers kpi-icon"></i>
+    <div class="kpi-label">Models Tested</div>
+    <div class="kpi-value">{{ model_summary|length }}</div>
+    <div class="kpi-sub">staging + mart layers</div>
+  </div>
+</div>
+
+<!-- Model breakdown + test type breakdown -->
+<div class="row g-4 mb-4">
+  <div class="col-lg-7">
+    <div class="ff-card">
+      <div class="card-header">
+        <h6 class="card-title"><i class="bi bi-layers me-2 text-primary"></i>Test Coverage by Model</h6>
+        <span style="font-size:11px;color:var(--ff-muted)">dbt schema.yml</span>
+      </div>
+      <div class="card-body">
+        {% for row in model_summary %}
+        <div style="margin-bottom:20px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div>
+              <code style="font-size:13px;color:var(--ff-accent);background:rgba(59,130,246,.1);padding:3px 8px;border-radius:4px">
+                {{ row.model_name }}
+              </code>
+              <span style="font-size:11px;color:var(--ff-muted);margin-left:8px">
+                {% if "stg_" in row.model_name %}staging layer{% else %}mart layer{% endif %}
+              </span>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span class="ff-badge badge-pass">{{ row.passed }}✓</span>
+              {% if row.failed %}<span class="ff-badge badge-fail">{{ row.failed }}✗</span>{% endif %}
+              <span style="font-size:11px;color:var(--ff-muted)">{{ row.avg_exec_ms|floatformat:0 }}ms avg</span>
+            </div>
+          </div>
+          <div class="ff-progress">
+            <div class="ff-progress-bar" style="width:{% widthratio row.passed row.total 100 %}%"></div>
+          </div>
+          <div style="font-size:11px;color:var(--ff-muted);margin-top:4px">{{ row.passed }}/{{ row.total }} tests passing</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="ff-card h-100">
+      <div class="card-header">
+        <h6 class="card-title"><i class="bi bi-pie-chart me-2 text-warning"></i>Test Types</h6>
+      </div>
+      <div class="card-body">
+        <div class="chart-container" style="height:200px;margin-bottom:16px">
+          <canvas id="testTypeChart"></canvas>
+        </div>
+        <table class="ff-table" style="font-size:12px">
+          <thead>
+            <tr><th>Test Type</th><th>Count</th><th>Pass</th></tr>
+          </thead>
+          <tbody>
+            {% for row in type_summary %}
+            <tr>
+              <td><code style="font-size:11px">{{ row.test_name }}</code></td>
+              <td>{{ row.total }}</td>
+              <td>
+                <span class="ff-badge badge-pass" style="font-size:10px">{{ row.passed }}</span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Full test results table -->
+<div class="ff-card">
+  <div class="card-header">
+    <h6 class="card-title"><i class="bi bi-table me-2 text-info"></i>All Test Results</h6>
+    <span style="font-size:11px;color:var(--ff-muted)">{{ total_tests }} tests across {{ model_summary|length }} dbt models</span>
+  </div>
+  <div class="table-scroll">
+    <table class="ff-table">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Test</th>
+          <th>Column</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Failures</th>
+          <th>Exec Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for test in all_tests %}
+        <tr>
+          <td>
+            <code style="font-size:11px;color:var(--ff-accent)">{{ test.model_name }}</code>
+          </td>
+          <td style="font-size:12px;font-weight:500">{{ test.test_name }}</td>
+          <td style="font-size:11px;color:var(--ff-muted);font-family:monospace">
+            {% if test.column_name %}{{ test.column_name }}{% else %}—{% endif %}
+          </td>
+          <td>
+            <span style="font-size:10px;background:var(--ff-surface2);border:1px solid var(--ff-border);
+              border-radius:4px;padding:2px 6px;color:var(--ff-muted)">{{ test.test_type }}</span>
+          </td>
+          <td>
+            <span class="ff-badge badge-{{ test.status }}">
+              {% if test.status == "pass" %}✓{% elif test.status == "fail" %}✗{% else %}⚠{% endif %}
+              {{ test.status }}
+            </span>
+          </td>
+          <td style="font-size:12px">
+            {% if test.failures %}
+              <span style="color:var(--ff-red)">{{ test.failures }}</span>
+            {% else %}<span style="color:var(--ff-muted)">0</span>{% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--ff-muted)">{{ test.execution_time_ms }}ms</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="7" style="text-align:center;color:var(--ff-muted);padding:40px">
+            No test results. Run <code>make dbt-test</code> to execute tests.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- dbt test philosophy note -->
+<div style="margin-top:20px;padding:16px 20px;background:var(--ff-surface);border:1px solid var(--ff-border);border-radius:12px;border-left:3px solid var(--ff-green)">
+  <div style="font-size:12px;font-weight:600;color:var(--ff-green);margin-bottom:8px">
+    <i class="bi bi-info-circle me-2"></i>Quality Gate Strategy
+  </div>
+  <div style="font-size:12px;color:var(--ff-muted);line-height:1.8">
+    Every pipeline stage enforces data quality via <strong style="color:var(--ff-text)">dbt tests</strong> before data reaches downstream consumers:
+    <br>
+    <strong style="color:var(--ff-text)">Staging layer</strong> — <code>not_null</code>, <code>unique</code>, <code>accepted_values</code>, <code>positive_price</code>, <code>high_gte_low</code> on raw ingested data.
+    <br>
+    <strong style="color:var(--ff-text)">Mart layer</strong> — <code>not_null</code>, <code>unique</code>, <code>relationship</code>, <code>range_check</code>, <code>not_negative</code> on transformed metrics.
+    <br>
+    Any test failure blocks the DAG and triggers an alert — preventing corrupt data from reaching the Looker Studio dashboard.
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Test type donut chart
+const typeData = {
+  labels: [{% for r in type_summary %}"{{ r.test_name }}"{% if not forloop.last %},{% endif %}{% endfor %}],
+  counts: [{% for r in type_summary %}{{ r.total }}{% if not forloop.last %},{% endif %}{% endfor %}],
+};
+
+const palette = ['#3b82f6','#10b981','#f59e0b','#6366f1','#ef4444','#8b5cf6','#ec4899','#14b8a6'];
+
+new Chart(document.getElementById('testTypeChart'), {
+  type: 'doughnut',
+  data: {
+    labels: typeData.labels,
+    datasets: [{
+      data: typeData.counts,
+      backgroundColor: palette,
+      borderColor: '#111827',
+      borderWidth: 2,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    cutout: '65%',
+    plugins: {
+      legend: { position: 'right', labels: { boxWidth: 12, padding: 10, font: { size: 11 } } }
+    }
+  }
+});
+</script>
+{% endblock %}

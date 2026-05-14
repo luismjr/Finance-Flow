@@ -1,0 +1,23 @@
+finance_flow:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      port: 5432
+      user: finance
+      password: finance
+      dbname: financeflow
+      schema: public
+      threads: 4
+
+    # BigQuery production profile
+    prod:
+      type: bigquery
+      method: service-account
+      project: "{{ env_var('BIGQUERY_PROJECT_ID') }}"
+      dataset: financeflow
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+      threads: 8
+      timeout_seconds: 300
+      location: US

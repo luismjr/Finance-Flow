@@ -1,0 +1,109 @@
+version: 2
+
+models:
+  - name: mart_stock_analytics
+    description: >
+      Daily stock prices enriched with 7-, 30-, and 90-day simple moving averages
+      and log daily returns. Primary mart for the price chart and market snapshot views.
+    columns:
+      - name: ticker
+        tests: [not_null]
+      - name: date
+        tests: [not_null]
+      - name: close_price
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+      - name: ma_7d
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+      - name: ma_30d
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+      - name: ma_90d
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+    tests:
+      - unique:
+          column_name: "ticker || '_' || date::text"
+      - relationships:
+          to: ref('stg_stock_prices')
+          field: "ticker || '_' || date::text"
+          column_name: "ticker || '_' || date::text"
+
+  - name: mart_volatility_metrics
+    description: >
+      Rolling 30- and 90-day realized volatility, annualized volatility (×√252),
+      beta vs SPY, and Sharpe ratio per ticker per day.
+    columns:
+      - name: ticker
+        tests: [not_null]
+      - name: date
+        tests: [not_null]
+      - name: rolling_vol_30d
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+              where: "rolling_vol_30d is not null"
+      - name: annualized_vol
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+              where: "annualized_vol is not null"
+      - name: beta
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "between -5 and 5"
+              where: "beta is not null"
+    tests:
+      - unique:
+          column_name: "ticker || '_' || date::text"
+      - relationships:
+          to: ref('mart_stock_analytics')
+          field: "ticker || '_' || date::text"
+          column_name: "ticker || '_' || date::text"
+
+  - name: mart_sector_aggregations
+    description: >
+      Sector-level daily aggregations: average return, average annualized volatility,
+      total volume, stock count, and top/bottom performers.
+    columns:
+      - name: sector
+        tests:
+          - not_null
+          - accepted_values:
+              values: [Technology, Financials, Healthcare, "Consumer Discretionary", Energy]
+      - name: date
+        tests: [not_null]
+      - name: num_stocks
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+      - name: avg_return
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "between -0.5 and 0.5"
+      - name: avg_volatility
+        tests:
+          - not_null
+      - name: total_volume
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+              where: "total_volume is not null"
+    tests:
+      - unique:
+          column_name: "sector || '_' || date::text"
+      - relationships:
+          to: ref('mart_stock_analytics')
+          field: ticker
+          column_name: top_performer

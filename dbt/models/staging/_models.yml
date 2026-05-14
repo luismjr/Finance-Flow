@@ -1,0 +1,71 @@
+version: 2
+
+models:
+  - name: stg_stock_prices
+    description: "Cleaned, typed OHLCV records. One row per ticker per trading day."
+    columns:
+      - name: ticker
+        description: "Stock ticker symbol"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [AAPL,MSFT,GOOGL,AMZN,NVDA,META,TSLA,AVGO,ORCL,ADBE,
+                       JPM,BAC,WFC,GS,MS,BLK,SCHW,AXP,USB,PNC,
+                       UNH,JNJ,LLY,ABBV,MRK,TMO,ABT,DHR,BMY,AMGN,
+                       MCD,NKE,SBUX,TGT,HD,LOW,BKNG,CMG,ABNB,ETSY,
+                       XOM,CVX,COP,EOG,SLB,PSX,VLO,MPC,OXY,HES]
+      - name: date
+        description: "Trading date (YYYY-MM-DD)"
+        tests:
+          - not_null
+      - name: close_price
+        description: "Closing price. Must be positive."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+      - name: open_price
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+      - name: high_price
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+      - name: low_price
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+      - name: volume
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+    tests:
+      - unique:
+          column_name: "ticker || '_' || date::text"
+      - dbt_utils.expression_is_true:
+          expression: "high_price >= low_price"
+
+  - name: stg_macro_indicators
+    description: "Cleaned FRED macroeconomic observations. One row per series per date."
+    columns:
+      - name: series_id
+        description: "FRED series identifier"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [FEDFUNDS, UNRATE, CPIAUCSL, GDP, T10Y2Y, VIXCLS,
+                       DGS10, DCOILWTICO, DEXUSEU, M2SL, UMCSENT, HOUST]
+      - name: date
+        tests:
+          - not_null
+      - name: value
+        tests:
+          - not_null
+    tests:
+      - unique:
+          column_name: "series_id || '_' || date::text"

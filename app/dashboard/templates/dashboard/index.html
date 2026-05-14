@@ -1,0 +1,302 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Dashboard — Finance Flow{% endblock %}
+{% block topbar_title %}Market Overview{% endblock %}
+
+{% block content %}
+<!-- KPI Row -->
+<div class="kpi-grid">
+  <div class="kpi-tile">
+    <i class="bi bi-building kpi-icon"></i>
+    <div class="kpi-label">Stocks Tracked</div>
+    <div class="kpi-value">{{ kpis.total_stocks }}</div>
+    <div class="kpi-sub">S&P 500 constituents</div>
+  </div>
+  <div class="kpi-tile">
+    <i class="bi bi-database kpi-icon"></i>
+    <div class="kpi-label">Total Records</div>
+    <div class="kpi-value">{{ kpis.total_records }}</div>
+    <div class="kpi-sub">OHLCV + macro observations</div>
+  </div>
+  <div class="kpi-tile">
+    <i class="bi bi-activity kpi-icon"></i>
+    <div class="kpi-label">Pipeline Success Rate</div>
+    <div class="kpi-value" style="color:var(--ff-green)">{{ kpis.success_rate }}%</div>
+    <div class="kpi-sub">30-day rolling window</div>
+  </div>
+  <div class="kpi-tile">
+    <i class="bi bi-shield-check kpi-icon"></i>
+    <div class="kpi-label">dbt Tests Passing</div>
+    <div class="kpi-value" style="color:var(--ff-accent)">{{ kpis.dbt_pass_rate }}%</div>
+    <div class="kpi-sub">{{ kpis.dbt_total }} tests across 4 models</div>
+  </div>
+  <div class="kpi-tile">
+    <i class="bi bi-clock-history kpi-icon"></i>
+    <div class="kpi-label">Data Freshness</div>
+    <div class="kpi-value" style="font-size:20px">{{ kpis.data_freshness }}</div>
+    <div class="kpi-sub">Last successful pipeline run</div>
+  </div>
+  <div class="kpi-tile">
+    <i class="bi bi-bar-chart kpi-icon"></i>
+    <div class="kpi-label">Macro Indicators</div>
+    <div class="kpi-value">{{ kpis.macro_series }}</div>
+    <div class="kpi-sub">FRED economic series</div>
+  </div>
+</div>
+
+<!-- Row 1: Sector Performance + Pipeline Status -->
+<div class="row g-4 mb-4">
+  <div class="col-lg-8">
+    <div class="ff-card h-100">
+      <div class="card-header">
+        <h6 class="card-title"><i class="bi bi-bar-chart me-2 text-primary"></i>Sector Performance (30-day avg return)</h6>
+        <span style="font-size:11px;color:var(--ff-muted)">dbt mart_sector_aggregations</span>
+      </div>
+      <div class="card-body">
+        <div class="chart-container" style="height:260px">
+          <canvas id="sectorChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="ff-card h-100">
+      <div class="card-header">
+        <h6 class="card-title"><i class="bi bi-diagram-3 me-2 text-warning"></i>Pipeline Health</h6>
+        <span style="font-size:11px;color:var(--ff-muted)">Last 30 days</span>
+      </div>
+      <div class="card-body">
+        <div class="chart-container" style="height:130px;margin-bottom:20px">
+          <canvas id="pipelineChart"></canvas>
+        </div>
+        <div class="row g-2 text-center" style="font-size:12px">
+          {% for stat in dag_stats %}
+          <div class="col-12">
+            <div style="background:var(--ff-surface2);border:1px solid var(--ff-border);border-radius:8px;padding:10px">
+              <div style="color:var(--ff-muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">{{ stat.dag_id|title }}</div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span class="ff-badge badge-success">{{ stat.successes }}✓</span>
+                <span style="color:var(--ff-text);font-weight:600;font-size:13px">
+                  {% if stat.total %}{{ stat.successes|floatformat:0 }}/{{ stat.total }}{% endif %}
+                </span>
+                {% if stat.failures %}<span class="ff-badge badge-failed">{{ stat.failures }}✗</span>{% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Row 2: Market Snapshot + dbt Test Summary -->
+<div class="row g-4 mb-4">
+  <div class="col-lg-7">
+    <div class="ff-card">
+      <div class="card-header">
+        <h6 class="card-title"><i class="bi bi-table me-2 text-success"></i>Market Snapshot</h6>
+        <a href="{% url 'stocks' %}" style="font-size:11px;color:var(--ff-accent);text-decoration:none">View all →</a>
+      </div>
+      <div class="table-scroll">
+        <table class="ff-table">
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Close</th>
+              <th>Daily Return</th>
+              <th>MA 7d</th>
+              <th>MA 30d</th>
+              <th>Signal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in latest_analytics %}
+            <tr>
+              <td>
+                <strong>{{ row.ticker }}</strong>
+              </td>
+              <td>${{ row.close_price }}</td>
+              <td class="{% if row.daily_return and row.daily_return > 0 %}text-gain{% elif row.daily_return %}text-loss{% endif %}">
+                {% if row.daily_return %}
+                  {% if row.daily_return > 0 %}+{% endif %}{{ row.daily_return|floatformat:2 }}%
+                {% else %}—{% endif %}
+              </td>
+              <td>{% if row.ma_7d %}${{ row.ma_7d }}{% else %}—{% endif %}</td>
+              <td>{% if row.ma_30d %}${{ row.ma_30d }}{% else %}—{% endif %}</td>
+              <td>
+                {% if row.ma_7d and row.ma_30d %}
+                  {% if row.ma_7d > row.ma_30d %}
+                    <span class="ff-badge badge-success">Bull</span>
+                  {% else %}
+                    <span class="ff-badge badge-failed">Bear</span>
+                  {% endif %}
+                {% else %}
+                  <span style="color:var(--ff-muted)">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="ff-card h-100">
+      <div class="card-header">
+        <h6 class="card-title"><i class="bi bi-shield-check me-2 text-info"></i>dbt Test Results</h6>
+        <a href="{% url 'quality' %}" style="font-size:11px;color:var(--ff-accent);text-decoration:none">View all →</a>
+      </div>
+      <div class="card-body">
+        {% for row in test_summary %}
+        <div style="margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:12px;font-weight:600;color:var(--ff-text)">{{ row.model_name }}</span>
+            <span style="font-size:11px;color:var(--ff-muted)">{{ row.passed }}/{{ row.total }}</span>
+          </div>
+          <div class="ff-progress">
+            <div class="ff-progress-bar" style="width:{% widthratio row.passed row.total 100 %}%;
+              {% if row.failed %}background:linear-gradient(90deg,var(--ff-green),var(--ff-yellow));{% endif %}">
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <span class="ff-badge badge-pass">{{ row.passed }} pass</span>
+            {% if row.failed %}<span class="ff-badge badge-fail">{{ row.failed }} fail</span>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Row 3: Macro Indicator -->
+<div class="row g-4">
+  <div class="col-12">
+    <div class="ff-card">
+      <div class="card-header">
+        <h6 class="card-title"><i class="bi bi-globe me-2 text-warning"></i>Macroeconomic Indicators</h6>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="macroSelect" style="background:var(--ff-surface2);border:1px solid var(--ff-border);color:var(--ff-text);padding:4px 10px;border-radius:6px;font-size:12px">
+            <option value="FEDFUNDS">Federal Funds Rate</option>
+            <option value="UNRATE">Unemployment Rate</option>
+            <option value="VIXCLS">VIX Volatility Index</option>
+            <option value="DGS10">10-Year Treasury</option>
+            <option value="DCOILWTICO">WTI Crude Oil</option>
+            <option value="T10Y2Y">10Y-2Y Treasury Spread</option>
+            <option value="UMCSENT">Consumer Sentiment</option>
+            <option value="DEXUSEU">USD/EUR Rate</option>
+          </select>
+          <span style="font-size:11px;color:var(--ff-muted)">FRED API</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="chart-container" style="height:200px">
+          <canvas id="macroChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Sector chart
+fetch('/api/sector-chart/?period=30')
+  .then(r => r.json())
+  .then(data => {
+    const avgReturns = data.sectors.map(sector => {
+      const vals = Object.values(data.data[sector] || {});
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    });
+
+    const colors = avgReturns.map(v => v >= 0 ? 'rgba(16,185,129,0.8)' : 'rgba(239,68,68,0.8)');
+
+    new Chart(document.getElementById('sectorChart'), {
+      type: 'bar',
+      data: {
+        labels: data.sectors,
+        datasets: [{
+          label: 'Avg Daily Return (%)',
+          data: avgReturns,
+          backgroundColor: colors,
+          borderColor: colors.map(c => c.replace('0.8', '1')),
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: {
+            grid: { color: '#1e2d45' },
+            ticks: { callback: v => v.toFixed(3) + '%' }
+          },
+          x: { grid: { display: false } }
+        }
+      }
+    });
+  });
+
+// Pipeline chart
+fetch('/api/pipeline-chart/')
+  .then(r => r.json())
+  .then(data => {
+    new Chart(document.getElementById('pipelineChart'), {
+      type: 'line',
+      data: {
+        labels: data.labels,
+        datasets: [
+          { label: 'Success', data: data.success, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.4, pointRadius: 0 },
+          { label: 'Failed', data: data.failed, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, tension: 0.4, pointRadius: 0 },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } },
+        scales: {
+          y: { grid: { color: '#1e2d45' }, beginAtZero: true },
+          x: { display: false }
+        }
+      }
+    });
+  });
+
+// Macro chart
+let macroChart = null;
+function loadMacro(series) {
+  fetch(`/api/macro-chart/?series=${series}&period=730`)
+    .then(r => r.json())
+    .then(data => {
+      if (macroChart) macroChart.destroy();
+      macroChart = new Chart(document.getElementById('macroChart'), {
+        type: 'line',
+        data: {
+          labels: data.labels,
+          datasets: [{
+            label: data.name,
+            data: data.values,
+            borderColor: '#f59e0b',
+            backgroundColor: 'rgba(245,158,11,0.08)',
+            fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'top', align: 'start', labels: { boxWidth: 12 } } },
+          scales: {
+            y: { grid: { color: '#1e2d45' } },
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } }
+          }
+        }
+      });
+    });
+}
+
+loadMacro('FEDFUNDS');
+document.getElementById('macroSelect').addEventListener('change', e => loadMacro(e.target.value));
+</script>
+{% endblock %}
