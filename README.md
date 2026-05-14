@@ -1,5 +1,7 @@
 # Finance Flow
 
+<img width="1470" height="798" alt="Screenshot 2026-05-14 at 3 05 30 PM" src="https://github.com/user-attachments/assets/6166272f-4c6b-4269-8be3-71f2816756e6" />
+
 An end-to-end ELT data pipeline that ingests daily stock prices and macroeconomic indicators from public financial APIs, transforms them with dbt, and surfaces actionable market insights in a live Django dashboard.
 
 **Live metrics from the pipeline:**
