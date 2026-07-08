@@ -14,8 +14,13 @@ x-airflow-common: &airflow-common
     FINANCEFLOW_DB_URL: postgresql://finance:finance@postgres/financeflow
     ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-demo}
     FRED_API_KEY: ${FRED_API_KEY:-}
+    GCS_BUCKET_NAME: ${GCS_BUCKET_NAME:-}
+    BIGQUERY_PROJECT_ID: ${BIGQUERY_PROJECT_ID:-}
+    BIGQUERY_DATASET_ID: ${BIGQUERY_DATASET_ID:-financeflow}
+    GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/secrets:/opt/airflow/secrets:ro
     - airflow-logs:/opt/airflow/logs
   depends_on:
     postgres:
@@ -63,7 +68,7 @@ services:
     <<: *airflow-common
     command: webserver
     ports:
-      - "8080:8080"
+      - "8081:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 10s
@@ -76,11 +81,7 @@ services:
 
   airflow-init:
     <<: *airflow-common
-    command: >
-      bash -c "airflow db init &&
-               airflow users create --username admin --password admin
-               --firstname Finance --lastname Flow
-               --role Admin --email admin@financeflow.io"
+    command: bash -c "airflow db init && airflow users create --username admin --password admin --firstname Finance --lastname Flow --role Admin --email admin@financeflow.io"
 
 volumes:
   postgres-data:

@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.utils.dates import days_ago
 
 DEFAULT_ARGS = {
     "owner": "finance-flow",
@@ -80,44 +79,77 @@ def fetch_stock_prices(**context):
 
 def upload_to_gcs(**context):
     """
-    Task 2 — Upload raw JSON to Google Cloud Storage.
-    Path: gs://financeflow-raw/stocks/year=YYYY/month=MM/day=DD/prices.json
+    Task 2 — Upload raw NDJSON to Google Cloud Storage.
+    Path: gs://{GCS_BUCKET_NAME}/stocks/{execution_date}/prices.json
+
+    Performs a real upload when GCS_BUCKET_NAME and GOOGLE_APPLICATION_CREDENTIALS
+    are set. Otherwise logs the would-be upload so the DAG still completes with
+    zero cloud setup (local/demo mode).
     """
     import json
     import os
 
-    records = context["ti"].xcom_pull(task_ids="fetch_stock_prices")
+    records = context["ti"].xcom_pull(task_ids="fetch_stock_prices") or []
     execution_date = context["ds"]
+    bucket_name = os.environ.get("GCS_BUCKET_NAME")
+    blob_path = f"stocks/{execution_date}/prices.json"
+    ndjson = "\n".join(json.dumps(r) for r in records)
 
-    # Production: use google.cloud.storage
-    # bucket = storage.Client().bucket(os.environ["GCS_BUCKET_NAME"])
-    # blob = bucket.blob(f"stocks/year={...}/month={...}/day={...}/prices.json")
-    # blob.upload_from_string(json.dumps(records))
+    if bucket_name and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        from google.cloud import storage
 
-    # Local demo: log the upload
-    count = len(records) if records else 0
-    gcs_path = f"gs://financeflow-raw/stocks/{execution_date}/prices.json"
-    print(f"[INFO] Uploaded {count} records to {gcs_path}")
+        client = storage.Client()
+        blob = client.bucket(bucket_name).blob(blob_path)
+        blob.upload_from_string(ndjson, content_type="application/json")
+        gcs_path = f"gs://{bucket_name}/{blob_path}"
+        print(f"[INFO] Uploaded {len(records)} records to {gcs_path}")
+    else:
+        gcs_path = f"gs://financeflow-raw/{blob_path}"
+        print(
+            f"[INFO] (local mode — set GCS_BUCKET_NAME + GOOGLE_APPLICATION_CREDENTIALS "
+            f"for a real upload) would upload {len(records)} records to {gcs_path}"
+        )
+
     context["ti"].xcom_push(key="gcs_path", value=gcs_path)
 
 
 def load_to_bigquery(**context):
     """
-    Task 3 — Load from GCS into BigQuery raw.stock_prices table.
+    Task 3 — Load from GCS into BigQuery raw_stock_prices table.
     Uses WRITE_APPEND to preserve full history.
+
+    Runs a real BigQuery load job when BIGQUERY_PROJECT_ID and
+    GOOGLE_APPLICATION_CREDENTIALS are set. Otherwise logs the would-be load
+    so the DAG still completes with zero cloud setup (local/demo mode).
     """
+    import os
+
     gcs_path = context["ti"].xcom_pull(task_ids="upload_to_gcs", key="gcs_path")
     record_count = context["ti"].xcom_pull(task_ids="fetch_stock_prices", key="record_count")
+    project_id = os.environ.get("BIGQUERY_PROJECT_ID")
+    dataset_id = os.environ.get("BIGQUERY_DATASET_ID", "financeflow")
 
-    # Production: use google.cloud.bigquery
-    # job_config = bigquery.LoadJobConfig(
-    #     source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-    #     write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-    #     schema=[...],
-    # )
-    # client.load_table_from_uri(gcs_path, "financeflow.raw.stock_prices", job_config=job_config)
+    if project_id and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        from google.cloud import bigquery
 
-    print(f"[INFO] Loaded {record_count} rows from {gcs_path} → BigQuery raw.stock_prices")
+        client = bigquery.Client(project=project_id)
+        dataset_ref = f"{project_id}.{dataset_id}"
+        client.create_dataset(dataset_ref, exists_ok=True)
+
+        table_id = f"{dataset_ref}.raw_stock_prices"
+        job_config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            autodetect=True,
+        )
+        load_job = client.load_table_from_uri(gcs_path, table_id, job_config=job_config)
+        load_job.result()
+        print(f"[INFO] Loaded {record_count} rows from {gcs_path} -> {table_id}")
+    else:
+        print(
+            f"[INFO] (local mode — set BIGQUERY_PROJECT_ID + GOOGLE_APPLICATION_CREDENTIALS "
+            f"for a real load) would load {record_count} rows from {gcs_path} -> BigQuery raw_stock_prices"
+        )
 
 
 def validate_record_count(**context):
@@ -142,7 +174,7 @@ with DAG(
     default_args=DEFAULT_ARGS,
     description="Daily ingest of S&P 500 OHLCV data → GCS → BigQuery",
     schedule_interval="0 6 * * 1-5",  # Mon–Fri at 06:00
-    start_date=days_ago(1),
+    start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["finance-flow", "ingestion", "stocks"],
     doc_md="""

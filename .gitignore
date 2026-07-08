@@ -150,6 +150,12 @@ activemq-data/
 # Environments
 .env
 .envrc
+
+# GCP service account keys
+airflow/secrets/*.json
+
+# macOS
+.DS_Store
 .venv
 env/
 venv/

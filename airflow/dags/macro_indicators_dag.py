@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.utils.dates import days_ago
 
 DEFAULT_ARGS = {
     "owner": "finance-flow",
@@ -79,27 +78,77 @@ def fetch_fred_series(**context):
 
 def upload_to_gcs(**context):
     """
-    Task 2 — Upload macro observations to GCS.
-    Path: gs://financeflow-raw/macro/{series_id}/{date}.json
+    Task 2 — Upload macro observations (NDJSON) to GCS.
+    Path: gs://{GCS_BUCKET_NAME}/macro/{execution_date}/observations.json
+
+    Performs a real upload when GCS_BUCKET_NAME and GOOGLE_APPLICATION_CREDENTIALS
+    are set. Otherwise logs the would-be upload so the DAG still completes with
+    zero cloud setup (local/demo mode).
     """
-    records = context["ti"].xcom_pull(task_ids="fetch_fred_series")
+    import json
+    import os
+
+    records = context["ti"].xcom_pull(task_ids="fetch_fred_series") or []
     execution_date = context["ds"]
-    count = len(records) if records else 0
-    gcs_path = f"gs://financeflow-raw/macro/{execution_date}/observations.json"
-    print(f"[INFO] Uploaded {count} observations to {gcs_path}")
+    bucket_name = os.environ.get("GCS_BUCKET_NAME")
+    blob_path = f"macro/{execution_date}/observations.json"
+    ndjson = "\n".join(json.dumps(r) for r in records)
+
+    if bucket_name and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        from google.cloud import storage
+
+        client = storage.Client()
+        blob = client.bucket(bucket_name).blob(blob_path)
+        blob.upload_from_string(ndjson, content_type="application/json")
+        gcs_path = f"gs://{bucket_name}/{blob_path}"
+        print(f"[INFO] Uploaded {len(records)} observations to {gcs_path}")
+    else:
+        gcs_path = f"gs://financeflow-raw/{blob_path}"
+        print(
+            f"[INFO] (local mode — set GCS_BUCKET_NAME + GOOGLE_APPLICATION_CREDENTIALS "
+            f"for a real upload) would upload {len(records)} observations to {gcs_path}"
+        )
+
     context["ti"].xcom_push(key="gcs_path", value=gcs_path)
 
 
 def load_to_bigquery(**context):
     """
-    Task 3 — Load macro observations into BigQuery raw.macro_indicators.
+    Task 3 — Load macro observations into BigQuery raw_macro_indicators.
     Uses WRITE_TRUNCATE to replace stale series data.
+
+    Runs a real BigQuery load job when BIGQUERY_PROJECT_ID and
+    GOOGLE_APPLICATION_CREDENTIALS are set. Otherwise logs the would-be load
+    so the DAG still completes with zero cloud setup (local/demo mode).
     """
+    import os
+
     gcs_path = context["ti"].xcom_pull(task_ids="upload_to_gcs", key="gcs_path")
     count = context["ti"].xcom_pull(task_ids="fetch_fred_series", key="observation_count")
+    project_id = os.environ.get("BIGQUERY_PROJECT_ID")
+    dataset_id = os.environ.get("BIGQUERY_DATASET_ID", "financeflow")
 
-    # Production: bigquery.LoadJobConfig(write_disposition=WRITE_TRUNCATE)
-    print(f"[INFO] Loaded {count} observations from {gcs_path} → BigQuery raw.macro_indicators")
+    if project_id and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        from google.cloud import bigquery
+
+        client = bigquery.Client(project=project_id)
+        dataset_ref = f"{project_id}.{dataset_id}"
+        client.create_dataset(dataset_ref, exists_ok=True)
+
+        table_id = f"{dataset_ref}.raw_macro_indicators"
+        job_config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            autodetect=True,
+        )
+        load_job = client.load_table_from_uri(gcs_path, table_id, job_config=job_config)
+        load_job.result()
+        print(f"[INFO] Loaded {count} observations from {gcs_path} -> {table_id}")
+    else:
+        print(
+            f"[INFO] (local mode — set BIGQUERY_PROJECT_ID + GOOGLE_APPLICATION_CREDENTIALS "
+            f"for a real load) would load {count} observations from {gcs_path} -> BigQuery raw_macro_indicators"
+        )
 
 
 def validate_series_coverage(**context):
@@ -125,7 +174,7 @@ with DAG(
     default_args=DEFAULT_ARGS,
     description="Monthly ingest of FRED macroeconomic indicators → GCS → BigQuery",
     schedule_interval="0 8 1 * *",  # 1st of each month at 08:00
-    start_date=days_ago(1),
+    start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["finance-flow", "ingestion", "macro", "fred"],
     doc_md="""
